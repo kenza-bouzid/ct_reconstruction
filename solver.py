@@ -54,7 +54,7 @@ class CtSolver():
         self.geometry = odl.contrib.tomo.elekta_icon_geometry()
         #set the data
         self.f_true = self.input_space.element(
-            np.load('/hl2027/noisy data.npy'))
+            np.load('/hl2027/noisy_data.npy'))
 
     def add_noise(self, noise):
         self.noise = noise
