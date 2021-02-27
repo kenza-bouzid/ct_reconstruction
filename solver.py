@@ -1,11 +1,17 @@
 import odl
 from enum import Enum 
+from tqdm import tqdm
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 class DataType(Enum):
     PHANTOM = 0
     CT = 1
+
+class SolverType(Enum):
+    STEEPEST_DECENT = 0
+    DOUGLAS_RACHFORD_PD = 1
 
 
 class CtSolver():
@@ -57,7 +63,7 @@ class CtSolver():
     def save_error(self, f):
         self.error.append((self.f_true-f).norm())
 
-    def solve_douglas_rachford_pd(self, lam=0.01, gamma=0.01, tau=1.0, niter=100):
+    def solve_douglas_rachford_pd(self, lam=0.01, gamma=0.01, tau=1.0, niter=100 , verbose=True):
         self.error = []
         # Assemble all operators into a list
         grad = odl.Gradient(self.input_space)
@@ -79,13 +85,16 @@ class CtSolver():
 
         # Solve using the Douglas-Rachford Primal-Dual method
         self.x_drpd = self.input_space.zero()
-
-        odl.solvers.douglas_rachford_pd(
-            self.x_drpd, f, g_funcs, lin_ops, tau=tau, sigma=sigma, niter=niter, callback=self.callback)
+        if not verbose:
+            odl.solvers.douglas_rachford_pd(
+                self.x_drpd, f, g_funcs, lin_ops, tau=tau, sigma=sigma, niter=niter)
+        else:
+            odl.solvers.douglas_rachford_pd(
+                self.x_drpd, f, g_funcs, lin_ops, tau=tau, sigma=sigma, niter=niter, callback=self.callback)
 
         return self.x_drpd, self.error
 
-    def solve_stepest_decent(self, lam=0.01, gamma=0.01, line_search = 0.001, maxiter=300):
+    def solve_stepest_decent(self, lam=0.01, gamma=0.01, line_search = 0.001, maxiter=300, verbose=True):
         self.error = []
         grad = odl.Gradient(self.input_space)
         huber_solver = odl.solvers.Huber(grad.range, gamma=gamma)  # small gamma
@@ -93,8 +102,31 @@ class CtSolver():
         Q = odl.solvers.L2NormSquared(self.output_space).translated(self.g_noisy) * self.ray_trafo + lam * huber_solver * grad
 
         self.x_sd = self.ray_trafo.domain.zero()
-        odl.solvers.smooth.gradient.steepest_descent(
-            Q, self.x_sd, line_search=line_search, maxiter=maxiter, callback=self.callback)
+        if not verbose:
+            odl.solvers.smooth.gradient.steepest_descent(
+                Q, self.x_sd, line_search=line_search, maxiter=maxiter)
+        else: 
+            odl.solvers.smooth.gradient.steepest_descent(
+                Q, self.x_sd, line_search=line_search, maxiter=maxiter, callback=self.callback)
 
         return self.x_sd, self.error
 
+    def set_gamma(self, solver=SolverType.DOUGLAS_RACHFORD_PD):
+        gammas = np.linspace(0.001, 1, num=20)
+        res_error = []
+        for g in tqdm(gammas):
+            if solver == SolverType.DOUGLAS_RACHFORD_PD:
+                res_error.append((self.solve_douglas_rachford_pd(
+                    gamma=g, verbose=False)[0] - self.f_true).norm())
+            else:
+                res_error.append((self.solve_stepest_decent(
+                    gamma=g, verbose=False, maxiter=100)[0] - self.f_true).norm())
+            
+        plt.scatter(gammas, res_error)
+        plt.xlabel("gamma")
+        plt.ylabel("residual error")
+        plt.title("Residual Error vs gamma of Huber Norm.")
+        plt.grid(True)
+        plt.show()
+
+        return gammas, res_error
