@@ -22,9 +22,6 @@ class CtSolver():
         else:
             self.set_up_ct()
         
-        self.ray_trafo = odl.tomo.RayTransform(self.input_space, self.geometry, impl="astra_cuda")
-        self.output_space = self.ray_trafo.range
-        
         self.error = []
 
         self.callback = (odl.solvers.CallbackPrintIteration(step=10) &
@@ -43,6 +40,10 @@ class CtSolver():
         #set the data 
         self.f_true = odl.phantom.shepp_logan(self.input_space, modified=True)
         
+        self.ray_trafo = odl.tomo.RayTransform(
+            self.input_space, self.geometry, impl="astra_cuda")
+        self.output_space = self.ray_trafo.range
+
         self.g = self.ray_trafo(self.f_true)
         self.g_noisy = self.g
         
@@ -57,7 +58,9 @@ class CtSolver():
         self.geometry = elekta_icon_geometry()
         #no grand truth image so we set this to 0 
         self.f_true = self.input_space.zero()
-        
+        self.ray_trafo = odl.tomo.RayTransform(
+            self.input_space, self.geometry, impl="astra_cuda")
+        self.output_space = self.ray_trafo.range
         self.g_noisy = np.load('/hl2027/noisy_data.npy')
 
     def add_noise(self, noise):
