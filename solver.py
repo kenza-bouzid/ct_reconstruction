@@ -64,6 +64,11 @@ class CtSolver():
         self.g_noisy = np.load('/hl2027/noisy_data.npy')
 
     def add_noise(self, noise):
+        """[summary]
+
+        Args:
+            noise ([type]): [description]
+        """
         self.noise = noise
         self.g_noisy = self.g + noise
 
