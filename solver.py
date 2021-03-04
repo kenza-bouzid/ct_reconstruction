@@ -70,7 +70,7 @@ class CtSolver():
             noise ([type]): [description]
         """
         self.noise = noise
-        self.g_noisy = self.g + noise
+        self.g_noisy = self.g + noise * odl.phantom.white_noise(self.output_space)
 
     def save_error(self, f):
         self.error.append((self.f_true-f).norm())
