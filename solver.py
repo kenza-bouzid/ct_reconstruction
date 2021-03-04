@@ -50,20 +50,25 @@ class CtSolver():
 
         
     def set_up_ct(self):
+        
         #set the space
         self.input_space = odl.uniform_discr(
-            [-112, -112, 0], [112, 112, 224], shape=(448, 448, 448), dtype='float32')
+            [-112, -112, 0], [112, 112, 224], shape=(332, 780, 720), dtype='float32')
+        
         #set the geometry
-        #self.geometry = odl.contrib.tomo.elekta_icon_geometry()
         self.geometry = elekta_icon_geometry()
+
         #no grand truth image so we set this to 0 
         self.f_true = self.input_space.zero()
         
         self.ray_trafo = odl.tomo.RayTransform(
             self.input_space, self.geometry, impl="astra_cuda")
+        
         self.output_space = self.ray_trafo.range
         
-        self.g_noisy = np.load('/hl2027/noisy_data.npy')
+        data = np.load('/hl2027/noisy_data.npy')
+        self.g_noisy = self.input_space.element(data)
+        
 
     def add_noise(self, noise):
         """[summary]
@@ -224,10 +229,8 @@ def elekta_icon_geometry(sad=780.0, sdd=1000.0,
     detector_partition = odl.uniform_partition(min_pt=det_min_pt,
                                                max_pt=det_max_pt,
                                                shape=detector_shape)
-
     # Create the geometry
     geometry = odl.tomo.ConeBeamGeometry(
         angles, detector_partition,
         src_radius=sad, det_radius=sdd - sad)
-
     return geometry
