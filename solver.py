@@ -53,7 +53,7 @@ class CtSolver():
         
         #set the space
         self.input_space = odl.uniform_discr(
-            [-112, -112, 0], [112, 112, 224], shape=(332, 780, 720), dtype='float32')
+            [-112, -112, 0], [112, 112, 224], shape=(448, 448, 448), dtype='float32')
         
         #set the geometry
         self.geometry = elekta_icon_geometry()
@@ -67,7 +67,7 @@ class CtSolver():
         self.output_space = self.ray_trafo.range
         
         data = np.load('/hl2027/noisy_data.npy')
-        self.g_noisy = self.input_space.element(data)
+        self.g_noisy = self.output_space.element(data)
         
 
     def add_noise(self, noise):
@@ -95,15 +95,16 @@ class CtSolver():
 
         #Functional of the bound contraint 0 <= x <= 1
         f = odl.solvers.IndicatorBox(self.input_space, 0, 1)
-
+        
         # Find scaling constants so that the solver converges.
-        opnorm_ray_trafo = odl.power_method_opnorm(self.ray_trafo, xstart=self.g_noisy)
-        opnorm_grad = odl.power_method_opnorm(grad, xstart=self.g_noisy)
+        opnorm_ray_trafo = self.ray_trafo.norm(estimate=True)
+        opnorm_grad = grad.norm(estimate=True)
         sigma = [1 / opnorm_ray_trafo ** 2, 1 / opnorm_grad ** 2]
         tau = 1.0
-
+        
         # Solve using the Douglas-Rachford Primal-Dual method
         self.x_drpd = self.input_space.zero()
+        
         if not verbose:
             odl.solvers.douglas_rachford_pd(
                 self.x_drpd, f, g_funcs, lin_ops, tau=tau, sigma=sigma, niter=niter)
@@ -112,14 +113,24 @@ class CtSolver():
                 self.x_drpd, f, g_funcs, lin_ops, tau=tau, sigma=sigma, niter=niter, callback=self.callback)
 
         return self.x_drpd, self.error
+    
 
-    def solve_stepest_decent(self, lam=0.01, gamma=0.01, line_search = 0.001, maxiter=300, verbose=True):
+    def solve_stepest_decent(self, lam=0.01, gamma=0.001, maxiter=300, verbose=True):
         self.error = []
         grad = odl.Gradient(self.input_space)
         huber_solver = odl.solvers.Huber(grad.range, gamma=gamma)  # small gamma
+        
+        Q1 = odl.solvers.L2NormSquared(self.output_space).translated(self.g_noisy) * self.ray_trafo
+        Q2 = huber_solver * grad
 
-        Q = odl.solvers.L2NormSquared(self.output_space).translated(self.g_noisy) * self.ray_trafo + lam * huber_solver * grad
-
+        Q = Q1 + lam * Q2 
+        
+        # estimate learning_rate
+        norm1 = self.ray_trafo.norm(estimate=True)**2
+        norm2 = 1/gamma * grad.norm(estimate=True)**2
+        
+        line_search = 2/((norm1 + lam * norm2)) * 0.1
+        print(f"learning_rate:{line_search}")
         self.x_sd = self.ray_trafo.domain.zero()
         if not verbose:
             odl.solvers.smooth.gradient.steepest_descent(
