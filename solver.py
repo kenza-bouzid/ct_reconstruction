@@ -83,6 +83,7 @@ class CtSolver():
         self.error.append((self.f_true-f).norm())
 
     def solve_douglas_rachford_pd(self, lam=0.01, gamma=0.01, tau=1.0, niter=100 , verbose=True):
+        
         self.error = []
         # Assemble all operators into a list
         grad = odl.Gradient(self.input_space)
@@ -115,7 +116,7 @@ class CtSolver():
         return self.x_drpd, self.error
     
 
-    def solve_stepest_decent(self, lam=0.01, gamma=0.001, maxiter=300, verbose=True):
+    def solve_stepest_decent(self, lam=0.01, gamma=0.001, maxiter=300, control=0.1, verbose=True):
         self.error = []
         grad = odl.Gradient(self.input_space)
         huber_solver = odl.solvers.Huber(grad.range, gamma=gamma)  # small gamma
@@ -129,7 +130,7 @@ class CtSolver():
         norm1 = self.ray_trafo.norm(estimate=True)**2
         norm2 = 1/gamma * grad.norm(estimate=True)**2
         
-        line_search = 2/((norm1 + lam * norm2)) * 0.1
+        line_search = 2/((norm1 + lam * norm2)) * control
         print(f"learning_rate:{line_search}")
         self.x_sd = self.ray_trafo.domain.zero()
         if not verbose:
