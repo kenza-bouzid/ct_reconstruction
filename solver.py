@@ -142,8 +142,8 @@ class CtSolver():
 
         return self.x_sd, self.error
 
-    def set_gamma(self, solver=SolverType.DOUGLAS_RACHFORD_PD):
-        gammas = np.linspace(0.0001, 0.01, num=25)
+    def set_gamma(self, solver=SolverType.DOUGLAS_RACHFORD_PD, _min=0.0001, _max=0.01):
+        gammas = np.linspace(_min, _max, num=25)
         res_error = []
         for g in tqdm(gammas):
             if solver == SolverType.DOUGLAS_RACHFORD_PD:
