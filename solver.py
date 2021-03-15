@@ -6,16 +6,45 @@ import matplotlib.pyplot as plt
 
 
 class DataType(Enum):
+    """Class enumeration to decide whether to work with the phantom or the CT data
+    
+    """
     PHANTOM = 0
     CT = 1
 
 class SolverType(Enum):
+    """Class enumeration to decide whether to use Douglas Rachford or Steepest Descent metod
+    
+    """
     STEEPEST_DECENT = 0
     DOUGLAS_RACHFORD_PD = 1
 
 
 class CtSolver():
+    """Class to solve the reconstruction problem, phantom experiment to the real CT-data reconstruction
+
+    Methods:
+        set_up_phantom: Setting up environment for the phantom (input space, geometry, ray transform, output range)
+        set_up_ct: Setting up environment for the CT acquisition (input space, geometry, ray transform, output range)
+        add_noise: Add the noise to the sinogram obtained by applying the ray transform to the ground truth phantom
+        save_error: Add the computed error, norm of the difference between ground truth and estimated image, each iteration step. 
+                    Called in the callback
+        solve_douglas_rachford_pd: Douglas Rachford Primer Dual Solver method (defining also the gradient operator and the functionals)
+        solve_stepest_decent: Steepest descent method (defining also the gradient operator and the functionals)
+        set_gamma: Choose the gamma for the Huber function so that the residual error is minimized.
+                   The plot of gammas against residual error is displayed
+    """
     def __init__(self, n=256, type=DataType.PHANTOM):
+        """Define if working with phantom or CT-data. Saving the error during iterations with callback
+
+        Args:
+            n (int, optional): number of sample for image space discretization. Defaults to 256.
+            type (int, optional): input data from DataType class. Defaults to DataType.PHANTOM.
+
+        Attributes:
+            error(list): will collect the errors (norm of difference: ground truth - estimated image) computed during the iterations.
+            callback(): will print the iteration count, show the image and save the error (when verbose=True in the solver)
+        """
         self.n = n
         if type == DataType.PHANTOM:
             self.set_up_phantom()
@@ -29,6 +58,22 @@ class CtSolver():
                     self.save_error)
 
     def set_up_phantom(self):
+        """Setting up environment for the phantom: input space, geometry, ray transform, output range
+        
+        Attributes:
+            input_space (ODL element): uniformly discretized L^p function space for the phantom
+            geometry (ODL element): Tomographic Fan Beam Geometry
+            f_true (ODL element): ground truth set as the Shepp Logan phantom
+            ray_trafo(ODL element): ray transform defined with the geometry and the input_space
+            output_space(ODL element): range of the ray transform, sinogram domain
+            g(ODL element): sinogram
+            g_noisy(ODL element): noisy sinogram initialized without noise
+
+        Variables:
+            apart (ODL element): Partition of the angle interval
+            dpart (ODL element): Partition of the detector parameter interval
+
+        """   
         #set the space 
         xlim = 10
         self.input_space = odl.uniform_discr(
@@ -50,6 +95,17 @@ class CtSolver():
 
         
     def set_up_ct(self):
+        """Setting up the environment for the CT acquisition: input space, geometry, ray transform, output range
+        
+        Attributes:
+            input_space (ODL element): uniformly discretized L^p function space for the CT image
+            geometry (ODL element): Tomographic geometry of the Elekta Icon CBCT system
+            f_true (ODL element): ground truth set to zero
+            ray_trafo(ODL element): ray transform defined with the geometry and the input_space
+            output_space(ODL element): range of the ray transform, data domain
+            g_noisy(numpy.ndarray): loaded data
+
+        """
         
         #set the space
         self.input_space = odl.uniform_discr(
@@ -71,19 +127,41 @@ class CtSolver():
         
 
     def add_noise(self, noise):
-        """[summary]
+        """Add the noise to the sinogram obtained by applying the ray transform to the ground truth phantom
 
         Args:
-            noise ([type]): [description]
+            noise (float): noise amplification coefficient multiplying by the white noise of ODL
+        Attributes:
+            noise (float): noise as an attribute
+            g_noisy(ODL element): noisy sinogram
         """
         self.noise = noise
         self.g_noisy = self.g + noise * odl.phantom.white_noise(self.output_space)
 
     def save_error(self, f):
+        """Add the computed error, norm of the difference between ground truth and estimated image, each iteration step. 
+            Called in the callback
+
+        Args:
+            f (ODL element): estimated image
+        """
         self.error.append((self.f_true-f).norm())
 
     def solve_douglas_rachford_pd(self, lam=0.01, gamma=0.01, tau=1.0, niter=100 , verbose=True):
-        
+        """Douglas Rachford Primer Dual Solver method (defining also the gradient operator and the functionals)
+
+        Args:
+            lam (float, optional): lambda parameter for regularization. Defaults to 0.01.
+            gamma (float, optional): gamma parameter for the Huber function. Defaults to 0.01.
+            tau (float, optional): step size parameter. Defaults to 1.0.
+            niter (int, optional): number of iterations. Defaults to 100.
+            verbose (bool, optional): if True the callback will be enabled. Defaults to True.
+
+        Returns:
+            x_drpd(ODL element): reconstructed image (solution of the problem)
+            error(list):list with the computed errors at each iteration
+
+        """
         self.error = []
         # Assemble all operators into a list
         grad = odl.Gradient(self.input_space)
@@ -101,7 +179,7 @@ class CtSolver():
         opnorm_ray_trafo = self.ray_trafo.norm(estimate=True)
         opnorm_grad = grad.norm(estimate=True)
         sigma = [1 / opnorm_ray_trafo ** 2, 1 / opnorm_grad ** 2]
-        tau = 1.0
+        
         
         # Solve using the Douglas-Rachford Primal-Dual method
         self.x_drpd = self.input_space.zero()
@@ -117,16 +195,33 @@ class CtSolver():
     
 
     def solve_stepest_decent(self, lam=0.01, gamma=0.001, maxiter=300, control=0.1, verbose=True):
+        """Steepest descent method (defining also the gradient operator and the functionals)
+
+        Args:
+            lam (float, optional): lambda parameter for regularization. Defaults to 0.01.
+            gamma (float, optional): gamma parameter for the Huber function. Defaults to 0.001.
+            maxiter (int, optional): number of iterations. Defaults to 300.
+            control (float, optional): To estimate line search, which is step length. Defaults to 0.1.
+            verbose (bool, optional): if True the callback will be enabled. Defaults to True.
+
+        Returns:
+            x_sd(ODL element): reconstructed image (solution of the problem)
+            error(list): list with the computed errors at each iteration
+
+        """
         self.error = []
+        
+        # Create functionals
         grad = odl.Gradient(self.input_space)
         huber_solver = odl.solvers.Huber(grad.range, gamma=gamma)  # small gamma
         
+        #Create goal functional
         Q1 = odl.solvers.L2NormSquared(self.output_space).translated(self.g_noisy) * self.ray_trafo
         Q2 = huber_solver * grad
 
         Q = Q1 + lam * Q2 
         
-        # estimate learning_rate
+        #estimate learning_rate
         norm1 = self.ray_trafo.norm(estimate=True)**2
         norm2 = 1/gamma * grad.norm(estimate=True)**2
         
@@ -143,6 +238,19 @@ class CtSolver():
         return self.x_sd, self.error
 
     def set_gamma(self, solver=SolverType.DOUGLAS_RACHFORD_PD, _min=0.0001, _max=0.01):
+        """Choose the gamma for the Huber function so that the residual error is minimized. 
+           The plot of gammas against residual error is displayed
+
+        Args:
+            _min (float, optional): set the minimum lambda. Defaults to 0.0001
+            _max (float, optional): set the maximum lambda. Defaults to 0.01
+            solver (int, optional): set the solver to estimate gamma. Defaults to SolverType.DOUGLAS_RACHFORD_PD.
+
+        Returns:
+            gammas(numpy.ndarray): array containing gamma evenly spaced
+            res_error(list): list containing the residual errors
+        """
+        #initialize gammas
         gammas = np.linspace(_min, _max, num=25)
         res_error = []
         for g in tqdm(gammas):
@@ -152,7 +260,7 @@ class CtSolver():
             else:
                 res_error.append((self.solve_stepest_decent(
                     gamma=g, verbose=False, maxiter=100)[0] - self.f_true).norm())
-            
+        #plot    
         plt.scatter(gammas, res_error)
         plt.xlabel("gamma")
         plt.ylabel("residual error")
@@ -163,6 +271,7 @@ class CtSolver():
         return gammas, res_error
 
     
+#Directly taken from the odl public repository:    
     
     """Tomography helpers for Elekta systems."""
 
